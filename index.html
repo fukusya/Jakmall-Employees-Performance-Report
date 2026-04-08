@@ -478,19 +478,8 @@
 
 <script>
 // ─── CONFIG ─────────────────────────────────────────────────────────────────
-const SHEET_ID = '151jI0apuXmVPYP-nuud_sZssp4v9oI2IZeJ1tEDqgl4';
-const API_KEY  = 'AIzaSyDYrgVZQ80pSYfgJ0pZHzKBfeY0bWFlADY';
+// Data fetched securely via /api/sheets (server-side)
 
-const RANGES = [
-  "'datkar raw'!A:AK",             // 0 – master employee data
-  "'Rekap OKR Individu'!A:P",      // 1 – OKR quarterly scores
-  "'Dashboard 360'!A:AV",          // 2 – 360 feedback
-  "'Employee Activity'!A:U",       // 3 – events & outings attendance
-  "Punishment!A:K",                // 4 – disciplinary records
-  "Reward!A:D",                    // 5 – rewards
-  "'Database karyawan training v3'!A:L", // 6 – training records
-  "'Employee History'!A:R"         // 7 – position history
-];
 
 const DIM_NAMES = ["Grow 1% Everyday","Be Knowledgeable & Innovative","Be Transparent & Direct Positively","Curious & Take Initiative","Deliver Best Customer Experience","Collaborative Teamwork","Resilience"];
 const EVENT_NAMES  = ['Billiard (Jan)','Townhall 2025','Valentine Day (Feb)','Halal Bi Halal (Apr)','Bulutangkis (Mei)','Bowling (Jun)','Dolanan (Jul)','Karnaval Kultural (Aug)','Mini Soccer (Sep)','Jakmilia Fright Fest (Oct)'];
@@ -587,10 +576,10 @@ function buildEmployees(sheets) {
     if (name) { if(!rewardByName[name]) rewardByName[name]=[]; rewardByName[name].push(row); }
   }
 
-  // ── Training by employee name (col 5 in v3), header rows 0-1 ──
+  // ── Training by employee name (col 4), header rows 0-1 ──
   const trainByName = {};
   for (const row of (trainSheet || []).slice(2)) {
-    const name = String(cell(row,5)||'').trim();
+    const name = String(cell(row,4)||'').trim();
     if (name) { if(!trainByName[name]) trainByName[name]=[]; trainByName[name].push(row); }
   }
 
@@ -672,12 +661,11 @@ function buildEmployees(sheets) {
     }));
 
     // ── Trainings ──
-    // If the employee's name appears in "Database karyawan training v3", they are considered Done
     const trainings = (trainByName[name]||[]).map(t => ({
       program: String(cell(t,1)||''),
-      title:   String(cell(t,3)||''),
-      date:    fmtDate(serToDate(cell(t,4))) || String(cell(t,4)||''),
-      status:  'done'  // presence in training database = completed
+      title:   String(cell(t,2)||''),
+      date:    fmtDate(serToDate(cell(t,3))) || String(cell(t,3)||''),
+      status:  String(cell(t,10)||'')
     }));
 
     // ── Position History ──
@@ -720,12 +708,10 @@ function showError(msg) {
 async function init() {
   showLoading();
   try {
-    const params = RANGES.map(r => 'ranges=' + encodeURIComponent(r)).join('&');
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values:batchGet?key=${API_KEY}&${params}&valueRenderOption=UNFORMATTED_VALUE`;
-    const res = await fetch(url);
+    const res = await fetch('/api/sheets');
     if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error?.message || `HTTP ${res.status}`);
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || `HTTP ${res.status}`);
     }
     const json = await res.json();
     const sheets = (json.valueRanges || []).map(vr => vr.values || []);
@@ -903,9 +889,10 @@ function loadEmployee(idx) {
     const softC=e.trainings.filter(t=>t.program&&t.program.toLowerCase().includes('soft')).length;
     const hardC=e.trainings.filter(t=>t.program&&(t.program.toLowerCase().includes('hard')||t.program.toLowerCase().includes('technical')||t.program.toLowerCase().includes('external')||t.program.toLowerCase().includes('google'))).length;
     const maxC=Math.max(softC,hardC,1);
-    trHtml=`<div class="donut-center"><div class="donut-wrap">${donutSvg(trPct,trColor)}<div class="donut-text">
-      <div class="donut-pct" style="color:${trColor}">${trPct}%</div><div class="donut-fraction">${doneCount}/${e.trainings.length}</div></div></div>
-      <div class="donut-caption">Training Selesai</div></div>
+    trHtml=`<div class="training-donut-row">
+      <div class="donut-wrap" style="width:120px;height:120px">${donutSvg(trPct,trColor).replace(/width="160" height="160"/,'width="120" height="120"')}
+      <div class="donut-text"><div class="donut-pct" style="color:${trColor};font-size:var(--text-2xl)">${trPct}%</div><div class="donut-fraction">${doneCount}/${e.trainings.length}</div></div></div>
+      <div class="training-donut-info"><div class="training-donut-fraction">${doneCount} dari ${e.trainings.length} training selesai</div><div class="training-donut-sub">Training yang sudah diselesaikan</div></div></div>
     <div class="type-row"><div class="type-label">Softskill</div><div class="type-track"><div class="type-fill" style="width:${softC/maxC*100}%"></div></div><div class="type-count">${softC}</div></div>
     <div class="type-row"><div class="type-label">Technical/External</div><div class="type-track"><div class="type-fill" style="width:${hardC/maxC*100}%"></div></div><div class="type-count">${hardC}</div></div>
     <div class="type-total">Total: <strong>${e.trainings.length} program</strong></div><div class="divider"></div>
